@@ -1,64 +1,70 @@
-# AWS Lambda Memory Benchmark Dashboard
+<div align="center">
 
-A professional FastAPI + Jinja2 dashboard for analyzing AWS Lambda memory benchmark results.
+# 🔬 Lambda Benchmark Dashboard
 
-## Quick Start
+**Find the cheapest, fastest memory configuration for your AWS Lambda — with data, not guesswork.**
+
+![Python](https://img.shields.io/badge/Python-0b0b0e?style=for-the-badge&logo=python&logoColor=3776AB)
+![FastAPI](https://img.shields.io/badge/FastAPI-0b0b0e?style=for-the-badge&logo=fastapi&logoColor=009688)
+![AWS Lambda](https://img.shields.io/badge/AWS_Lambda-0b0b0e?style=for-the-badge&logo=awslambda&logoColor=FF9900)
+![Chart.js](https://img.shields.io/badge/Chart.js-0b0b0e?style=for-the-badge&logo=chartdotjs&logoColor=FF6384)
+
+</div>
+
+## The problem
+
+AWS Lambda pricing is a two-variable trap: more memory costs more per millisecond, but often runs *so much faster* that total cost drops. The only way to find the sweet spot is to benchmark — this dashboard automates that comparison across **6 memory configurations (128MB → 3008MB)** and **3 endpoint profiles** (health, I/O-bound, CPU-bound transform).
+
+## What it measures
+
+| Metric | Why it matters |
+|---|---|
+| ❄️ **Cold start init (ms)** | First-invocation latency your users feel after idle |
+| 🔥 **Warm billed duration (ms)** | What AWS actually charges you for |
+| 💰 **Cost per million requests** | The number that decides your memory config |
+| 📊 **Memory utilization %** | Detect over-provisioning at a glance |
+| ⚖️ **Weighted perf score** | Latency × cost composite for one-glance ranking |
+
+## Dashboard views (8)
+
+1. **Overview** — KPI cards, response-time chart, cold-start comparison, cost area chart, auto-generated insights
+2. **Health endpoint** — latency + billed-duration charts, sortable table
+3. **Transform endpoint** — CPU-bound profile analysis
+4. **Cost analysis** — area charts + cost heatmap across all configs
+5. **Performance** — radar chart (weighted score) + bubble scatter
+6. **Cold start analysis** — init-time comparison, cold vs warm delta
+7. **Memory utilization** — per-config progress cards
+8. **Raw data** — searchable/sortable table + CSV download
+
+## Live demo mode ⚡
+
+Hit **"🚀 Demo Benchmark"** and the dashboard replays a full benchmark run **streamed over Server-Sent Events** — you watch the terminal-style execution log live, then every chart re-renders with the incoming data. No AWS account needed to explore.
+
+## API
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/` | GET | Dashboard UI (Jinja2) |
+| `/api/data` | GET | All benchmark results as JSON |
+| `/api/upload` | POST | Upload your own benchmark CSVs |
+| `/api/demo-benchmark/stream` | GET | SSE stream of simulated run |
+| `/api/download/{endpoint}` | GET | Export results as CSV |
+| `/api/reset` | POST | Restore bundled sample data |
+
+## Quick start
 
 ```bash
 pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8000
+# open http://localhost:8000
 ```
 
-Then open http://localhost:8000
+## Architecture notes
 
-## Features
+- **FastAPI + Jinja2** — single service, zero-JS-build frontend with Chart.js via CDN
+- **CSV-driven** — benchmark results are plain CSVs in `benchmark_data/`; swap in your own via upload or file drop
+- **SSE over WebSockets** — one-directional live streaming without connection-management overhead
 
-- 📊 **Dashboard** — KPI cards, response time chart, cold start comparison, cost area chart, insights
-- 💚 **Health Endpoint** — Dedicated latency + billed duration charts + sortable table
-- 🔄 **Transform Endpoint** — Latency + cost charts + sortable table
-- 💰 **Cost Analysis** — Area charts + performance heatmap
-- 🚀 **Performance** — Radar chart (weighted score) + bubble scatter plot + sortable table
-- ❄️ **Cold Start Analysis** — Init time comparison + cold vs warm chart
-- 🧠 **Memory Utilization** — Progress bar cards for all configurations
-- 📋 **Raw Data** — Full searchable/sortable data table + CSV download
+## Sample finding (bundled data)
 
-## Demo Benchmark Button
-
-Click **"🚀 Demo Benchmark — Preloaded Python App"** to:
-1. See the exact benchmark commands in a terminal UI
-2. Watch simulated execution with real data from the preloaded CSV files
-3. Dashboard updates automatically after completion
-
-## To Run Real Benchmarks
-
-```bash
-cd benchmark/
-python benchmark.py --function-prefix memory-benchmark \
-  --memory 128 256 512 1024 2048 3008 \
-  --path /health --warm-requests 50 \
-  --region eu-west-1 --out health_results.csv
-
-python benchmark.py --function-prefix memory-benchmark \
-  --memory 128 256 512 1024 2048 3008 \
-  --path /transform --method POST \
-  --body '{"records": [{"a": 1, "b": 2}, {"x": 99, "y": 100}]}' \
-  --warm-requests 50 --region eu-west-1 --out transform_results.csv
-
-python benchmark.py --function-prefix memory-benchmark \
-  --memory 128 256 512 1024 2048 3008 \
-  --path /items/bench-1 --warm-requests 50 \
-  --region eu-west-1 --out io_results.csv
-```
-
-Then upload the CSVs using the **Upload CSV** button in the dashboard.
-
-## Paste Your App URL
-
-If you have a FastAPI app already deployed, enter its URL in the Demo Benchmark terminal — the dashboard will benchmark against your live endpoint.
-
-## Technology Stack
-
-- **Backend**: Python · FastAPI · Jinja2
-- **Frontend**: Vanilla JS · Chart.js · PapaParse
-- **Streaming**: Server-Sent Events (SSE)
-- **Data**: Preloaded CSV (health_results.csv, transform_results.csv, io_results.csv)
+> 128MB is the *most expensive* config for the CPU-bound transform endpoint — higher-memory configs finish so much faster they cost less per million requests. Memory ≠ cost.
