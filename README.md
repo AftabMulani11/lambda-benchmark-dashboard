@@ -1,3 +1,5 @@
+
+> **[▶ Live demo](https://aftabmulani11.github.io/lambda-benchmark-dashboard/)** — static demo mode with preloaded benchmark data, no AWS account needed.
 <div align="center">
 
 # 🔬 Lambda Benchmark Dashboard

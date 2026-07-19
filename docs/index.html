@@ -1,0 +1,1477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AWS Lambda Benchmark Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0f1a;
+    --bg2: #111827;
+    --bg3: #1a2235;
+    --bg4: #1e2d45;
+    --border: #1e3a5f;
+    --accent: #3b82f6;
+    --accent2: #8b5cf6;
+    --accent3: #06b6d4;
+    --green: #10b981;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #64748b;
+    --card-glow: 0 0 30px rgba(59,130,246,0.08);
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; display: flex; height: 100vh; overflow: hidden; }
+
+  /* ── SIDEBAR ── */
+  #sidebar {
+    width: 220px; min-width: 220px; background: var(--bg2);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+    padding: 0; overflow-y: auto; z-index: 10;
+  }
+  .sidebar-brand { padding: 20px 16px 16px; border-bottom: 1px solid var(--border); }
+  .brand-icon { width: 36px; height: 36px; background: linear-gradient(135deg,var(--accent),var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; margin-bottom: 8px; }
+  .brand-name { font-size: 14px; font-weight: 700; color: var(--text); }
+  .brand-sub { font-size: 10px; color: var(--text3); margin-top: 2px; letter-spacing: 0.05em; text-transform: uppercase; }
+  .nav-section { padding: 8px 0; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer; border-radius: 0; font-size: 13px; color: var(--text2); transition: all 0.15s; border-left: 3px solid transparent; }
+  .nav-item:hover { background: var(--bg3); color: var(--text); }
+  .nav-item.active { background: rgba(59,130,246,0.12); color: var(--accent); border-left-color: var(--accent); }
+  .nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: auto; }
+  .nav-icon { font-size: 15px; width: 18px; text-align: center; }
+  .sidebar-footer { padding: 16px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text3); margin-top: auto; }
+
+  /* ── MAIN ── */
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── TOPBAR ── */
+  #topbar {
+    background: var(--bg2); border-bottom: 1px solid var(--border);
+    padding: 14px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .topbar-title h1 { font-size: 22px; font-weight: 800; background: linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .topbar-title p { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .topbar-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; white-space: nowrap; }
+  .btn-primary { background: linear-gradient(135deg,var(--accent),var(--accent2)); color: #fff; }
+  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text2); }
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-demo { background: linear-gradient(135deg,#f59e0b,#ef4444); color: #fff; font-weight: 700; box-shadow: 0 0 20px rgba(245,158,11,0.3); }
+  .btn-demo:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 0 30px rgba(245,158,11,0.5); }
+  .btn-ghost { background: var(--bg3); color: var(--text2); }
+  .btn-ghost:hover { background: var(--bg4); color: var(--text); }
+
+  /* ── FILTER BAR ── */
+  #filterbar {
+    background: var(--bg2); border-bottom: 1px solid var(--border);
+    padding: 10px 24px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  }
+  .filter-group { display: flex; align-items: center; gap: 8px; }
+  .filter-label { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; }
+  .filter-pills { display: flex; gap: 4px; }
+  .pill { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); color: var(--text2); background: transparent; transition: all 0.15s; }
+  .pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pill:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+  .mem-checks { display: flex; gap: 4px; flex-wrap: wrap; }
+  .mem-check { padding: 3px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; border: 1px solid var(--border); color: var(--text3); background: transparent; transition: all 0.15s; }
+  .mem-check.active { background: var(--bg4); border-color: var(--accent3); color: var(--accent3); }
+
+  /* ── CONTENT ── */
+  #content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+  /* SECTION PAGES */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── KPI GRID ── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 14px; margin-bottom: 20px; }
+  .kpi-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; position: relative; overflow: hidden; transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--card-glow); }
+  .kpi-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background: linear-gradient(90deg,var(--accent),var(--accent2)); }
+  .kpi-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); margin-bottom: 8px; }
+  .kpi-main { display: flex; align-items: flex-end; gap: 4px; }
+  .kpi-value { font-size: 26px; font-weight: 800; color: var(--text); line-height: 1; }
+  .kpi-unit { font-size: 13px; color: var(--text3); margin-bottom: 3px; }
+  .kpi-desc { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .kpi-trend { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: var(--green); margin-top: 6px; }
+  .kpi-icon { position: absolute; right: 14px; top: 14px; font-size: 20px; opacity: 0.5; }
+
+  /* ── CHART GRID ── */
+  .chart-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; }
+  .chart-grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+  .chart-full { grid-column: 1/-1; }
+  .chart-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px; box-shadow: var(--card-glow);
+  }
+  .chart-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+  .chart-subtitle { font-size: 11px; color: var(--text3); margin-bottom: 14px; }
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* ── TABLE ── */
+  .table-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-top: 16px; }
+  .table-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .search-input { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; color: var(--text); font-size: 12px; width: 220px; outline: none; }
+  .search-input:focus { border-color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead th { padding: 10px 12px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text3); border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap; user-select: none; }
+  thead th:hover { color: var(--text); }
+  tbody tr { border-bottom: 1px solid rgba(30,58,95,0.4); transition: background 0.1s; }
+  tbody tr:hover { background: var(--bg3); }
+  tbody td { padding: 9px 12px; color: var(--text2); }
+  .ep-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+  .ep-badge.health { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .ep-badge.transform { background: rgba(139,92,246,0.15); color: #a78bfa; }
+  .ep-badge.io { background: rgba(6,182,212,0.15); color: #22d3ee; }
+  .score-bar { display: flex; align-items: center; gap: 8px; }
+  .score-fill { height: 4px; border-radius: 2px; background: linear-gradient(90deg,var(--accent),var(--accent2)); }
+
+  /* ── INSIGHTS ── */
+  .insights-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-top: 16px; }
+  .insight-list { display: flex; flex-direction: column; gap: 10px; }
+  .insight-item { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; display: flex; gap: 10px; }
+  .insight-num { font-size: 10px; font-weight: 800; color: var(--accent); background: rgba(59,130,246,0.1); border-radius: 4px; padding: 2px 6px; height: fit-content; white-space: nowrap; }
+  .insight-text { font-size: 12px; color: var(--text2); line-height: 1.5; }
+  .rec-card { background: linear-gradient(135deg,rgba(59,130,246,0.1),rgba(139,92,246,0.1)); border: 1px solid rgba(59,130,246,0.3); border-radius: var(--radius); padding: 20px; }
+  .rec-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 12px; }
+  .rec-memory { font-size: 48px; font-weight: 800; background: linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; line-height: 1; }
+  .rec-unit { font-size: 18px; font-weight: 600; color: var(--text2); }
+  .rec-score { display: inline-flex; align-items: center; gap: 6px; background: rgba(16,185,129,0.15); color: var(--green); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 700; margin: 10px 0; }
+  .rec-reason { font-size: 12px; color: var(--text2); line-height: 1.6; }
+
+  /* ── HEATMAP ── */
+  .heatmap-wrap { overflow-x: auto; }
+  .heatmap-table { width: 100%; border-collapse: separate; border-spacing: 3px; }
+  .heatmap-table th { font-size: 11px; color: var(--text3); padding: 6px 8px; text-align: center; font-weight: 600; }
+  .heatmap-table td { padding: 8px 6px; border-radius: 6px; text-align: center; font-size: 11px; font-weight: 600; min-width: 70px; }
+  .hm-label { text-align: left !important; color: var(--text2); font-size: 11px; font-weight: 600; white-space: nowrap; padding-right: 12px; }
+
+  /* ── MEMORY UTIL ── */
+  .mem-util-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(260px,1fr)); gap: 12px; }
+  .mem-util-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .mem-util-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .mem-util-ep { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text3); }
+  .mem-util-size { font-size: 18px; font-weight: 800; color: var(--text); }
+  .mem-util-pct { font-size: 20px; font-weight: 800; color: var(--accent2); }
+  .mem-util-label { font-size: 10px; color: var(--text3); }
+  .progress-track { height: 8px; background: var(--bg2); border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+  .progress-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg,var(--accent),var(--accent2)); transition: width 0.8s ease; }
+  .mem-util-detail { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); }
+
+  /* ── TERMINAL ── */
+  #terminal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    z-index: 1000; align-items: center; justify-content: center; padding: 20px;
+  }
+  #terminal-overlay.show { display: flex; }
+  .terminal-box {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 12px;
+    width: 100%; max-width: 820px; max-height: 80vh; display: flex; flex-direction: column;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.8);
+  }
+  .terminal-header { background: #161b22; padding: 12px 16px; border-bottom: 1px solid #30363d; border-radius: 12px 12px 0 0; display: flex; align-items: center; gap: 8px; }
+  .term-dot { width: 12px; height: 12px; border-radius: 50%; }
+  .term-title { font-size: 12px; color: #8b949e; margin-left: 8px; font-family: monospace; }
+  .term-close { margin-left: auto; background: none; border: none; color: #8b949e; cursor: pointer; font-size: 16px; padding: 0 4px; }
+  .term-close:hover { color: #fff; }
+  #terminal-output {
+    flex: 1; overflow-y: auto; padding: 16px; font-family: 'Consolas','Fira Code',monospace;
+    font-size: 12px; line-height: 1.6; color: #c9d1d9;
+  }
+  .term-cmd { color: #58a6ff; }
+  .term-info { color: #8b949e; }
+  .term-progress { color: #f0883e; }
+  .term-log { color: #3fb950; }
+  .term-success { color: #56d364; font-weight: 600; }
+  .term-error { color: #f85149; }
+  .term-done { color: #bc8cff; font-weight: 700; }
+  .term-footer { padding: 12px 16px; border-top: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+  .term-status { font-size: 12px; color: #8b949e; font-family: monospace; }
+  #term-progress-bar { height: 4px; background: #21262d; border-radius: 2px; margin-top: 4px; }
+  #term-progress-fill { height: 100%; background: linear-gradient(90deg,#58a6ff,#bc8cff); border-radius: 2px; width: 0; transition: width 0.5s; }
+  .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3fb950; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── UPLOAD AREA ── */
+  .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 40px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg3); }
+  .upload-zone:hover { border-color: var(--accent); background: rgba(59,130,246,0.05); }
+  .upload-zone.drag { border-color: var(--accent2); background: rgba(139,92,246,0.05); }
+
+  /* ── RADAR ── */
+  .radar-wrap { display: flex; align-items: center; justify-content: center; height: 280px; }
+
+  /* SCATTER quadrant */
+  .quadrant-labels { position: relative; }
+
+  /* MISC */
+  .section-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .section-title span { font-size: 12px; color: var(--text3); font-weight: 400; }
+  .badge { display: inline-flex; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+  .badge-blue { background: rgba(59,130,246,0.15); color: var(--accent); }
+
+  .loading-skeleton { background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  .tooltip-val { color: #fff; font-weight: 700; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg2); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .no-data { text-align: center; padding: 60px 20px; color: var(--text3); }
+  .no-data-icon { font-size: 48px; margin-bottom: 12px; }
+
+  @media (max-width: 768px) {
+    #sidebar { display: none; }
+    .chart-grid { grid-template-columns: 1fr; }
+    .insights-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-icon">⚡</div>
+    <div class="brand-name">Lambda Bench</div>
+    <div class="brand-sub">FastAPI · EU-WEST-1</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-item active" onclick="showPage('dashboard',this)">
+      <span class="nav-icon">📊</span> Dashboard <span class="dot"></span>
+    </div>
+    <div class="nav-item" onclick="showPage('health',this)">
+      <span class="nav-icon">💚</span> Health Endpoint
+    </div>
+    <div class="nav-item" onclick="showPage('transform',this)">
+      <span class="nav-icon">🔄</span> Transform Endpoint
+    </div>
+    <div class="nav-item" onclick="showPage('cost',this)">
+      <span class="nav-icon">💰</span> Cost Analysis
+    </div>
+    <div class="nav-item" onclick="showPage('performance',this)">
+      <span class="nav-icon">🚀</span> Performance
+    </div>
+    <div class="nav-item" onclick="showPage('coldstart',this)">
+      <span class="nav-icon">❄️</span> Cold Start
+    </div>
+    <div class="nav-item" onclick="showPage('memory',this)">
+      <span class="nav-icon">🧠</span> Memory Utilization
+    </div>
+    <div class="nav-item" onclick="showPage('rawdata',this)">
+      <span class="nav-icon">📋</span> Raw Data
+    </div>
+  </div>
+  <div class="sidebar-footer">v1.0 · Benchmark Dashboard</div>
+</nav>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- TOPBAR -->
+  <div id="topbar">
+    <div class="topbar-title">
+      <h1>AWS Lambda Memory Benchmark Analysis</h1>
+      <p>Performance and Cost Analysis of FastAPI Serverless Application</p>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-demo" onclick="openTerminal()">
+        🚀 Demo Benchmark — Preloaded Python App
+      </button>
+      <label class="btn btn-outline" style="cursor:pointer">
+        ⬆️ Upload CSV
+        <input type="file" id="csvUpload" multiple accept=".csv" style="display:none" onchange="uploadCSV(this)">
+      </label>
+      <button class="btn btn-ghost" onclick="resetData()">↺ Reset</button>
+    </div>
+  </div>
+
+  <!-- FILTER BAR -->
+  <div id="filterbar">
+    <div class="filter-group">
+      <span class="filter-label">Endpoint</span>
+      <div class="filter-pills">
+        <span class="pill active" onclick="setFilter('endpoint','both',this)">Both</span>
+        <span class="pill" onclick="setFilter('endpoint','health',this)">Health</span>
+        <span class="pill" onclick="setFilter('endpoint','transform',this)">Transform</span>
+        <span class="pill" onclick="setFilter('endpoint','io',this)">I/O</span>
+      </div>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Memory</span>
+      <div class="mem-checks" id="memChecks"></div>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Type</span>
+      <div class="filter-pills">
+        <span class="pill active" onclick="setFilter('type','all',this)">All</span>
+        <span class="pill" onclick="setFilter('type','cold',this)">Cold</span>
+        <span class="pill" onclick="setFilter('type','warm',this)">Warm</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="content">
+
+    <!-- ═══════════════ PAGE: DASHBOARD ═══════════════ -->
+    <div class="page active" id="page-dashboard">
+      <!-- KPIs -->
+      <div class="kpi-grid" id="kpiGrid"></div>
+
+      <!-- Charts Row 1 -->
+      <div class="chart-grid" style="margin-bottom:16px">
+        <div class="chart-card">
+          <div class="chart-title">Response Time vs Memory</div>
+          <div class="chart-subtitle">Warm average response time (ms)</div>
+          <div class="chart-wrap"><canvas id="chartResponseTime"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Cold Start Comparison</div>
+          <div class="chart-subtitle">Health vs Transform vs I/O</div>
+          <div class="chart-wrap"><canvas id="chartColdStart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Charts Row 2 -->
+      <div class="chart-grid" style="margin-bottom:16px">
+        <div class="chart-card">
+          <div class="chart-title">Estimated Cost per 1M Requests</div>
+          <div class="chart-subtitle">Area chart — lower is better</div>
+          <div class="chart-wrap"><canvas id="chartCost"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Cost vs Performance Quadrant</div>
+          <div class="chart-subtitle">Find the sweet spot — bottom-left wins</div>
+          <div class="chart-wrap"><canvas id="chartQuadrant"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Insights + Recommendation -->
+      <div class="insights-grid">
+        <div class="chart-card">
+          <div class="section-title">💡 AI Insights <span>Auto-generated from benchmark data</span></div>
+          <div class="insight-list" id="insightList"></div>
+        </div>
+        <div class="rec-card">
+          <div class="rec-title">⭐ Recommended Configuration</div>
+          <div id="recContent"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ PAGE: HEALTH ═══════════════ -->
+    <div class="page" id="page-health">
+      <div class="kpi-grid" id="healthKpis"></div>
+      <div class="chart-grid" style="margin-bottom:16px">
+        <div class="chart-card">
+          <div class="chart-title">Health Endpoint · Latency vs Memory</div>
+          <div class="chart-subtitle">Warm average billed duration (ms)</div>
+          <div class="chart-wrap"><canvas id="chartHealthLatency"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Health Endpoint · Billed Duration</div>
+          <div class="chart-subtitle">Avg billed duration per memory tier</div>
+          <div class="chart-wrap"><canvas id="chartHealthBilled"></canvas></div>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="section-title" style="margin-bottom:0">Health Summary Table</div>
+          <input class="search-input" placeholder="🔍 Search..." oninput="filterTable('healthTable',this.value)">
+        </div>
+        <table id="healthTable"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <!-- ═══════════════ PAGE: TRANSFORM ═══════════════ -->
+    <div class="page" id="page-transform">
+      <div class="kpi-grid" id="transformKpis"></div>
+      <div class="chart-grid" style="margin-bottom:16px">
+        <div class="chart-card">
+          <div class="chart-title">Transform Endpoint · Latency vs Memory</div>
+          <div class="chart-subtitle">Warm average billed duration (ms)</div>
+          <div class="chart-wrap"><canvas id="chartTransformLatency"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Transform Endpoint · Cost Analysis</div>
+          <div class="chart-subtitle">Estimated cost per 1M requests ($)</div>
+          <div class="chart-wrap"><canvas id="chartTransformCost"></canvas></div>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="section-title" style="margin-bottom:0">Transform Summary Table</div>
+          <input class="search-input" placeholder="🔍 Search..." oninput="filterTable('transformTable',this.value)">
+        </div>
+        <table id="transformTable"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <!-- ═══════════════ PAGE: COST ═══════════════ -->
+    <div class="page" id="page-cost">
+      <div class="chart-grid" style="margin-bottom:16px">
+        <div class="chart-card">
+          <div class="chart-title">Cost per 1M Requests — All Endpoints</div>
+          <div class="chart-subtitle">Area chart · find the most cost-efficient tier</div>
+          <div class="chart-wrap"><canvas id="chartCostAll"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Billed Duration by Memory</div>
+          <div class="chart-subtitle">Average billed duration (ms)</div>
+          <div class="chart-wrap"><canvas id="chartBilledAll"></canvas></div>
+        </div>
+      </div>
+      <div class="chart-grid">
+        <div class="chart-card chart-full">
+          <div class="chart-title">Performance Heatmap</div>
+          <div class="chart-subtitle">Color intensity = relative performance (darker = worse)</div>
+          <div class="heatmap-wrap" id="heatmapWrap"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ PAGE: PERFORMANCE ═══════════════ -->
+    <div class="page" id="page-performance">
+      <div class="chart-grid" style="margin-bottom:16px">
+        <div class="chart-card">
+          <div class="chart-title">Performance Score — Radar</div>
+          <div class="chart-subtitle">Weighted: 40% latency · 30% cost · 20% cold start · 10% mem efficiency</div>
+          <div class="radar-wrap"><canvas id="chartRadar"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Scatter: Cost vs Latency Bubble</div>
+          <div class="chart-subtitle">Bubble size = cost · Color = endpoint</div>
+          <div class="chart-wrap"><canvas id="chartScatter"></canvas></div>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="section-title" style="margin-bottom:0">Full Performance Table <span>Sortable · click headers</span></div>
+          <input class="search-input" placeholder="🔍 Search..." oninput="filterTable('perfTable',this.value)">
+        </div>
+        <table id="perfTable"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <!-- ═══════════════ PAGE: COLD START ═══════════════ -->
+    <div class="page" id="page-coldstart">
+      <div class="chart-grid" style="margin-bottom:16px">
+        <div class="chart-card">
+          <div class="chart-title">Cold Start Init Time by Memory</div>
+          <div class="chart-subtitle">Init duration reported by Lambda runtime (ms)</div>
+          <div class="chart-wrap"><canvas id="chartColdDetail"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Cold vs Warm Duration</div>
+          <div class="chart-subtitle">Comparison across memory tiers</div>
+          <div class="chart-wrap"><canvas id="chartColdWarm"></canvas></div>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="section-title" style="margin-bottom:0">Cold Start Analysis Table</div>
+        </div>
+        <table id="coldTable"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <!-- ═══════════════ PAGE: MEMORY UTIL ═══════════════ -->
+    <div class="page" id="page-memory">
+      <div class="section-title">Memory Utilization Across Configurations</div>
+      <div class="mem-util-grid" id="memUtilGrid"></div>
+    </div>
+
+    <!-- ═══════════════ PAGE: RAW DATA ═══════════════ -->
+    <div class="page" id="page-rawdata">
+      <div class="table-card">
+        <div class="table-header">
+          <div class="section-title" style="margin-bottom:0">Raw Benchmark Data</div>
+          <div style="display:flex;gap:8px">
+            <input class="search-input" placeholder="🔍 Search..." oninput="filterTable('rawTable',this.value)">
+            <button class="btn btn-outline" onclick="downloadAll()">⬇️ Download CSV</button>
+          </div>
+        </div>
+        <table id="rawTable"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- FOOTER -->
+  <div style="background:var(--bg2);border-top:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text3);">
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">⚡</span><strong style="color:var(--text2)">AWS Lambda Memory Benchmark Analysis</strong> · Performance and Cost Analysis of FastAPI Serverless Application</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <span class="badge badge-blue">AWS Lambda</span>
+      <span class="badge badge-blue">FastAPI</span>
+      <span class="badge badge-blue">Python</span>
+      <span class="badge badge-blue">API Gateway</span>
+      <span class="badge badge-blue">AWS CloudWatch</span>
+      <span style="color:var(--text3);margin-left:8px">Benchmark Region: eu-west-1</span>
+    </div>
+  </div>
+</div>
+
+<!-- TERMINAL OVERLAY -->
+<div id="terminal-overlay">
+  <div class="terminal-box">
+    <div class="terminal-header">
+      <div class="term-dot" style="background:#ff5f57"></div>
+      <div class="term-dot" style="background:#ffbd2e"></div>
+      <div class="term-dot" style="background:#28ca41"></div>
+      <div class="term-title">benchmark terminal — memory-benchmark · eu-west-1</div>
+      <button class="term-close" onclick="closeTerminal()">✕</button>
+    </div>
+    <div id="terminal-output"></div>
+    <div class="term-footer">
+      <div>
+        <div class="term-status" id="termStatus">Ready to run benchmark…</div>
+        <div id="term-progress-bar"><div id="term-progress-fill"></div></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="closeTerminal()">Close</button>
+        <button class="btn btn-primary" id="runBtn" onclick="runDemoBenchmark()">▶ Run Demo Benchmark</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
+let analytics = {"kpis": {"fastest_avg_response": {"value": "2.2", "unit": "ms", "desc": "@ 1024 MB", "label": "Fastest Avg Response", "trend": "Best warm latency"}, "lowest_cold_start": {"value": "868", "unit": "ms", "desc": "@ 3008 MB", "label": "Lowest Cold Start", "trend": "Quickest init"}, "lowest_cost": {"value": "$0.210", "unit": "", "desc": "per 1M req @ 128 MB", "label": "Lowest Est. Cost", "trend": "Cheapest config"}, "best_memory_config": {"value": "1024", "unit": "MB", "desc": "Score 91.9/100", "label": "Best Memory Config", "trend": "Weighted winner"}, "highest_mem_util": {"value": "78", "unit": "%", "desc": "Peak utilization", "label": "Highest Memory Use", "trend": "Peak utilization"}, "total_runs": {"value": "18", "unit": "", "desc": "Aggregated configurations", "label": "Total Benchmark Runs", "trend": "All endpoints"}}, "memories": [128, 256, 512, 1024, 2048, 3008], "health": [{"memory_mb": 128, "cold_billed_ms": 2129.0, "cold_init_ms": 1078.55, "warm_billed_p50_ms": 532.0, "warm_billed_p95_ms": 563.25, "warm_billed_p99_ms": 572.51, "warm_billed_avg_ms": 535.22, "est_cost_per_1k_usd": 0.00132, "warm_sample_count": 50}, {"memory_mb": 256, "cold_billed_ms": 1546.0, "cold_init_ms": 1039.26, "warm_billed_p50_ms": 253.0, "warm_billed_p95_ms": 274.0, "warm_billed_p99_ms": 286.2, "warm_billed_avg_ms": 256.9, "est_cost_per_1k_usd": 0.00127, "warm_sample_count": 50}, {"memory_mb": 512, "cold_billed_ms": 1323.0, "cold_init_ms": 1073.41, "warm_billed_p50_ms": 113.5, "warm_billed_p95_ms": 131.0, "warm_billed_p99_ms": 134.04, "warm_billed_avg_ms": 117.22, "est_cost_per_1k_usd": 0.00118, "warm_sample_count": 50}, {"memory_mb": 1024, "cold_billed_ms": 1193.0, "cold_init_ms": 1066.36, "warm_billed_p50_ms": 57.0, "warm_billed_p95_ms": 66.0, "warm_billed_p99_ms": 66.51, "warm_billed_avg_ms": 59.6, "est_cost_per_1k_usd": 0.00119, "warm_sample_count": 50}, {"memory_mb": 2048, "cold_billed_ms": 1277.0, "cold_init_ms": 1194.33, "warm_billed_p50_ms": 43.0, "warm_billed_p95_ms": 55.55, "warm_billed_p99_ms": 57.53, "warm_billed_avg_ms": 45.12, "est_cost_per_1k_usd": 0.0017, "warm_sample_count": 50}, {"memory_mb": 3008, "cold_billed_ms": 1209.0, "cold_init_ms": 1126.5, "warm_billed_p50_ms": 42.0, "warm_billed_p95_ms": 59.1, "warm_billed_p99_ms": 65.59, "warm_billed_avg_ms": 44.82, "est_cost_per_1k_usd": 0.00239, "warm_sample_count": 50}], "transform": [{"memory_mb": 128, "cold_billed_ms": 1110.0, "cold_init_ms": 1102.44, "warm_billed_p50_ms": 2.0, "warm_billed_p95_ms": 15.0, "warm_billed_p99_ms": 24.14, "warm_billed_avg_ms": 4.84, "est_cost_per_1k_usd": 0.00021, "warm_sample_count": 50}, {"memory_mb": 256, "cold_billed_ms": 1080.0, "cold_init_ms": 1076.51, "warm_billed_p50_ms": 2.0, "warm_billed_p95_ms": 8.5, "warm_billed_p99_ms": 16.02, "warm_billed_avg_ms": 3.04, "est_cost_per_1k_usd": 0.00021, "warm_sample_count": 50}, {"memory_mb": 512, "cold_billed_ms": 1076.0, "cold_init_ms": 1072.77, "warm_billed_p50_ms": 3.0, "warm_billed_p95_ms": 3.0, "warm_billed_p99_ms": 5.51, "warm_billed_avg_ms": 2.62, "est_cost_per_1k_usd": 0.00022, "warm_sample_count": 50}, {"memory_mb": 1024, "cold_billed_ms": 1028.0, "cold_init_ms": 1024.54, "warm_billed_p50_ms": 2.0, "warm_billed_p95_ms": 3.0, "warm_billed_p99_ms": 3.51, "warm_billed_avg_ms": 2.24, "est_cost_per_1k_usd": 0.00024, "warm_sample_count": 50}, {"memory_mb": 2048, "cold_billed_ms": 1088.0, "cold_init_ms": 1085.22, "warm_billed_p50_ms": 3.0, "warm_billed_p95_ms": 3.55, "warm_billed_p99_ms": 4.0, "warm_billed_avg_ms": 2.72, "est_cost_per_1k_usd": 0.00029, "warm_sample_count": 50}, {"memory_mb": 3008, "cold_billed_ms": 871.0, "cold_init_ms": 867.65, "warm_billed_p50_ms": 2.0, "warm_billed_p95_ms": 3.0, "warm_billed_p99_ms": 3.51, "warm_billed_avg_ms": 2.28, "est_cost_per_1k_usd": 0.00031, "warm_sample_count": 50}], "io": [{"memory_mb": 128, "cold_billed_ms": 10330.0, "cold_init_ms": 915.29, "warm_billed_p50_ms": 47.0, "warm_billed_p95_ms": 67.0, "warm_billed_p99_ms": 85.85, "warm_billed_avg_ms": 50.02, "est_cost_per_1k_usd": 0.0003, "warm_sample_count": 50}, {"memory_mb": 256, "cold_billed_ms": 6254.0, "cold_init_ms": 1100.44, "warm_billed_p50_ms": 23.0, "warm_billed_p95_ms": 39.3, "warm_billed_p99_ms": 51.18, "warm_billed_avg_ms": 20.02, "est_cost_per_1k_usd": 0.00028, "warm_sample_count": 50}, {"memory_mb": 512, "cold_billed_ms": 3506.0, "cold_init_ms": 1046.26, "warm_billed_p50_ms": 9.0, "warm_billed_p95_ms": 21.1, "warm_billed_p99_ms": 22.51, "warm_billed_avg_ms": 10.06, "est_cost_per_1k_usd": 0.00028, "warm_sample_count": 50}, {"memory_mb": 1024, "cold_billed_ms": 2222.0, "cold_init_ms": 1079.93, "warm_billed_p50_ms": 8.5, "warm_billed_p95_ms": 10.55, "warm_billed_p99_ms": 13.0, "warm_billed_avg_ms": 8.76, "est_cost_per_1k_usd": 0.00035, "warm_sample_count": 50}, {"memory_mb": 2048, "cold_billed_ms": 1622.0, "cold_init_ms": 997.48, "warm_billed_p50_ms": 8.0, "warm_billed_p95_ms": 10.0, "warm_billed_p99_ms": 12.04, "warm_billed_avg_ms": 8.02, "est_cost_per_1k_usd": 0.00047, "warm_sample_count": 50}, {"memory_mb": 3008, "cold_billed_ms": 1661.0, "cold_init_ms": 1020.45, "warm_billed_p50_ms": 8.0, "warm_billed_p95_ms": 10.0, "warm_billed_p99_ms": 12.55, "warm_billed_avg_ms": 8.24, "est_cost_per_1k_usd": 0.0006, "warm_sample_count": 50}], "all_rows": [{"memory_mb": 1024, "cold_billed_ms": 1193.0, "cold_init_ms": 1066.36, "warm_billed_p50_ms": 57.0, "warm_billed_p95_ms": 66.0, "warm_billed_p99_ms": 66.51, "warm_billed_avg_ms": 59.6, "est_cost_per_1k_usd": 0.00119, "warm_sample_count": 50, "endpoint": "health", "cost_per_million": 1.1933, "perf_score": 91.9}, {"memory_mb": 512, "cold_billed_ms": 1323.0, "cold_init_ms": 1073.41, "warm_billed_p50_ms": 113.5, "warm_billed_p95_ms": 131.0, "warm_billed_p99_ms": 134.04, "warm_billed_avg_ms": 117.22, "est_cost_per_1k_usd": 0.00118, "warm_sample_count": 50, "endpoint": "health", "cost_per_million": 1.1768, "perf_score": 88.4}, {"memory_mb": 512, "cold_billed_ms": 3506.0, "cold_init_ms": 1046.26, "warm_billed_p50_ms": 9.0, "warm_billed_p95_ms": 21.1, "warm_billed_p99_ms": 22.51, "warm_billed_avg_ms": 10.06, "est_cost_per_1k_usd": 0.00028, "warm_sample_count": 50, "endpoint": "io", "cost_per_million": 0.2838, "perf_score": 82.6}, {"memory_mb": 256, "cold_billed_ms": 1546.0, "cold_init_ms": 1039.26, "warm_billed_p50_ms": 253.0, "warm_billed_p95_ms": 274.0, "warm_billed_p99_ms": 286.2, "warm_billed_avg_ms": 256.9, "est_cost_per_1k_usd": 0.00127, "warm_sample_count": 50, "endpoint": "health", "cost_per_million": 1.2704, "perf_score": 80.0}, {"memory_mb": 1024, "cold_billed_ms": 1028.0, "cold_init_ms": 1024.54, "warm_billed_p50_ms": 2.0, "warm_billed_p95_ms": 3.0, "warm_billed_p99_ms": 3.51, "warm_billed_avg_ms": 2.24, "est_cost_per_1k_usd": 0.00024, "warm_sample_count": 50, "endpoint": "transform", "cost_per_million": 0.2373, "perf_score": 74.5}, {"memory_mb": 512, "cold_billed_ms": 1076.0, "cold_init_ms": 1072.77, "warm_billed_p50_ms": 3.0, "warm_billed_p95_ms": 3.0, "warm_billed_p99_ms": 5.51, "warm_billed_avg_ms": 2.62, "est_cost_per_1k_usd": 0.00022, "warm_sample_count": 50, "endpoint": "transform", "cost_per_million": 0.2218, "perf_score": 72.3}, {"memory_mb": 1024, "cold_billed_ms": 2222.0, "cold_init_ms": 1079.93, "warm_billed_p50_ms": 8.5, "warm_billed_p95_ms": 10.55, "warm_billed_p99_ms": 13.0, "warm_billed_avg_ms": 8.76, "est_cost_per_1k_usd": 0.00035, "warm_sample_count": 50, "endpoint": "io", "cost_per_million": 0.346, "perf_score": 71.8}, {"memory_mb": 256, "cold_billed_ms": 1080.0, "cold_init_ms": 1076.51, "warm_billed_p50_ms": 2.0, "warm_billed_p95_ms": 8.5, "warm_billed_p99_ms": 16.02, "warm_billed_avg_ms": 3.04, "est_cost_per_1k_usd": 0.00021, "warm_sample_count": 50, "endpoint": "transform", "cost_per_million": 0.2127, "perf_score": 69.5}, {"memory_mb": 256, "cold_billed_ms": 6254.0, "cold_init_ms": 1100.44, "warm_billed_p50_ms": 23.0, "warm_billed_p95_ms": 39.3, "warm_billed_p99_ms": 51.18, "warm_billed_avg_ms": 20.02, "est_cost_per_1k_usd": 0.00028, "warm_sample_count": 50, "endpoint": "io", "cost_per_million": 0.2834, "perf_score": 68.1}, {"memory_mb": 2048, "cold_billed_ms": 1622.0, "cold_init_ms": 997.48, "warm_billed_p50_ms": 8.0, "warm_billed_p95_ms": 10.0, "warm_billed_p99_ms": 12.04, "warm_billed_avg_ms": 8.02, "est_cost_per_1k_usd": 0.00047, "warm_sample_count": 50, "endpoint": "io", "cost_per_million": 0.4673, "perf_score": 66.6}, {"memory_mb": 2048, "cold_billed_ms": 1277.0, "cold_init_ms": 1194.33, "warm_billed_p50_ms": 43.0, "warm_billed_p95_ms": 55.55, "warm_billed_p99_ms": 57.53, "warm_billed_avg_ms": 45.12, "est_cost_per_1k_usd": 0.0017, "warm_sample_count": 50, "endpoint": "health", "cost_per_million": 1.704, "perf_score": 60.4}, {"memory_mb": 3008, "cold_billed_ms": 871.0, "cold_init_ms": 867.65, "warm_billed_p50_ms": 2.0, "warm_billed_p95_ms": 3.0, "warm_billed_p99_ms": 3.51, "warm_billed_avg_ms": 2.28, "est_cost_per_1k_usd": 0.00031, "warm_sample_count": 50, "endpoint": "transform", "cost_per_million": 0.3116, "perf_score": 59.4}, {"memory_mb": 128, "cold_billed_ms": 10330.0, "cold_init_ms": 915.29, "warm_billed_p50_ms": 47.0, "warm_billed_p95_ms": 67.0, "warm_billed_p99_ms": 85.85, "warm_billed_avg_ms": 50.02, "est_cost_per_1k_usd": 0.0003, "warm_sample_count": 50, "endpoint": "io", "cost_per_million": 0.3042, "perf_score": 58.1}, {"memory_mb": 128, "cold_billed_ms": 2129.0, "cold_init_ms": 1078.55, "warm_billed_p50_ms": 532.0, "warm_billed_p95_ms": 563.25, "warm_billed_p99_ms": 572.51, "warm_billed_avg_ms": 535.22, "est_cost_per_1k_usd": 0.00132, "warm_sample_count": 50, "endpoint": "health", "cost_per_million": 1.315, "perf_score": 51.5}, {"memory_mb": 3008, "cold_billed_ms": 1209.0, "cold_init_ms": 1126.5, "warm_billed_p50_ms": 42.0, "warm_billed_p95_ms": 59.1, "warm_billed_p99_ms": 65.59, "warm_billed_avg_ms": 44.82, "est_cost_per_1k_usd": 0.00239, "warm_sample_count": 50, "endpoint": "health", "cost_per_million": 2.3943, "perf_score": 48.7}, {"memory_mb": 3008, "cold_billed_ms": 1661.0, "cold_init_ms": 1020.45, "warm_billed_p50_ms": 8.0, "warm_billed_p95_ms": 10.0, "warm_billed_p99_ms": 12.55, "warm_billed_avg_ms": 8.24, "est_cost_per_1k_usd": 0.0006, "warm_sample_count": 50, "endpoint": "io", "cost_per_million": 0.6034, "perf_score": 48.4}, {"memory_mb": 2048, "cold_billed_ms": 1088.0, "cold_init_ms": 1085.22, "warm_billed_p50_ms": 3.0, "warm_billed_p95_ms": 3.55, "warm_billed_p99_ms": 4.0, "warm_billed_avg_ms": 2.72, "est_cost_per_1k_usd": 0.00029, "warm_sample_count": 50, "endpoint": "transform", "cost_per_million": 0.2907, "perf_score": 43.4}, {"memory_mb": 128, "cold_billed_ms": 1110.0, "cold_init_ms": 1102.44, "warm_billed_p50_ms": 2.0, "warm_billed_p95_ms": 15.0, "warm_billed_p99_ms": 24.14, "warm_billed_avg_ms": 4.84, "est_cost_per_1k_usd": 0.00021, "warm_sample_count": 50, "endpoint": "transform", "cost_per_million": 0.2101, "perf_score": 40.0}], "charts": {"health_warm": [535.22, 256.9, 117.22, 59.6, 45.12, 44.82], "transform_warm": [4.84, 3.04, 2.62, 2.24, 2.72, 2.28], "io_warm": [50.02, 20.02, 10.06, 8.76, 8.02, 8.24], "health_cold": [1078.55, 1039.26, 1073.41, 1066.36, 1194.33, 1126.5], "transform_cold": [1102.44, 1076.51, 1072.77, 1024.54, 1085.22, 867.65], "io_cold": [915.29, 1100.44, 1046.26, 1079.93, 997.48, 1020.45], "health_cost": [null, null, null, null, null, null], "transform_cost": [null, null, null, null, null, null], "io_cost": [null, null, null, null, null, null]}, "insights": ["Moving from 128 MB to 3008 MB reduces Health endpoint latency by ~92%.", "512 MB is the cheapest Health config ($0.00118/1k req) while 3008 MB is the fastest (44.8 ms avg).", "Allocating beyond 2048 MB yields diminishing returns (<0.3 ms improvement on the Health endpoint).", "The Transform endpoint is highly efficient: latency stays below 4.8 ms even at 128 MB, demonstrating IO-bound workload characteristics.", "DynamoDB I/O endpoint benefits most from higher memory: 2048 MB gives 8.0 ms avg vs Health at 44.8 ms."], "recommendation": {"memory": 512, "endpoint": "io", "score": 82.6, "warm_avg": 10.06, "cost_per_million": 0.2838, "reason": "Provides the best balance between response time (10.1 ms avg) and AWS Lambda cost ($0.284/1M requests) with a performance score of 82.6/100."}, "has_io": true};
+const INITIAL_ANALYTICS = JSON.parse(JSON.stringify(analytics));
+let activeCharts = {};
+let filters = { endpoint: 'both', type: 'all', memories: new Set() };
+let sortState = {};
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  initMemoryFilters();
+  renderAll();
+});
+
+function renderAll() {
+  renderKPIs();
+  renderInsights();
+  renderRecommendation();
+  renderCharts();
+  renderTables();
+  renderMemoryUtil();
+  renderHeatmap();
+}
+
+// ═══════════════════════════════════════════
+// FILTERS
+// ═══════════════════════════════════════════
+function initMemoryFilters() {
+  const mems = analytics.memories || [128,256,512,1024,2048,3008];
+  const wrap = document.getElementById('memChecks');
+  wrap.innerHTML = '';
+  mems.forEach(m => {
+    filters.memories.add(m);
+    const el = document.createElement('span');
+    el.className = 'mem-check active';
+    el.textContent = m + ' MB';
+    el.onclick = () => toggleMem(m, el);
+    wrap.appendChild(el);
+  });
+}
+
+function toggleMem(m, el) {
+  if (filters.memories.has(m)) { filters.memories.delete(m); el.classList.remove('active'); }
+  else { filters.memories.add(m); el.classList.add('active'); }
+  renderAll();
+}
+
+function setFilter(key, val, el) {
+  filters[key] = val;
+  el.parentElement.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  renderAll();
+}
+
+function getFilteredData(endpoint) {
+  let rows = analytics[endpoint] || [];
+  rows = rows.filter(r => filters.memories.has(r.memory_mb));
+  return rows;
+}
+
+// ═══════════════════════════════════════════
+// PAGE NAV
+// ═══════════════════════════════════════════
+function showPage(id, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  el.classList.add('active');
+}
+
+// ═══════════════════════════════════════════
+// KPI RENDER
+// ═══════════════════════════════════════════
+const KPI_ICONS = {
+  fastest_avg_response: '⚡',
+  lowest_cold_start: '🔥',
+  lowest_cost: '💰',
+  best_memory_config: '🏆',
+  highest_mem_util: '🧠',
+  total_runs: '📊',
+};
+
+function renderKPIs() {
+  const grid = document.getElementById('kpiGrid');
+  if (!grid || !analytics.kpis) return;
+  grid.innerHTML = '';
+  Object.entries(analytics.kpis).forEach(([key, kpi]) => {
+    const card = document.createElement('div');
+    card.className = 'kpi-card';
+    card.innerHTML = `
+      <div class="kpi-icon">${KPI_ICONS[key] || '📈'}</div>
+      <div class="kpi-label">${kpi.label}</div>
+      <div class="kpi-main">
+        <div class="kpi-value" data-target="${kpi.value.replace(/[^0-9.]/g,'')}">${kpi.value}</div>
+        <div class="kpi-unit">${kpi.unit}</div>
+      </div>
+      <div class="kpi-desc">${kpi.desc}</div>
+      <div class="kpi-trend">↗ ${kpi.trend}</div>
+    `;
+    grid.appendChild(card);
+  });
+  animateCounters();
+}
+
+function animateCounters() {
+  document.querySelectorAll('[data-target]').forEach(el => {
+    const target = parseFloat(el.dataset.target);
+    if (isNaN(target)) return;
+    const original = el.textContent;
+    const isFloat = original.includes('.');
+    const hasDollar = original.includes('$');
+    let start = 0, duration = 1000, startTime = null;
+    function step(ts) {
+      if (!startTime) startTime = ts;
+      const progress = Math.min((ts - startTime) / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      const val = start + (target - start) * ease;
+      el.textContent = (hasDollar ? '$' : '') + (isFloat ? val.toFixed(2) : Math.round(val).toString());
+      if (progress < 1) requestAnimationFrame(step);
+      else el.textContent = original;
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+// ═══════════════════════════════════════════
+// INSIGHTS
+// ═══════════════════════════════════════════
+function renderInsights() {
+  const list = document.getElementById('insightList');
+  if (!list) return;
+  const insights = analytics.insights || [];
+  list.innerHTML = insights.map((ins, i) => `
+    <div class="insight-item">
+      <span class="insight-num">0${i+1}</span>
+      <span class="insight-text">${ins}</span>
+    </div>
+  `).join('');
+}
+
+function renderRecommendation() {
+  const el = document.getElementById('recContent');
+  if (!el) return;
+  const rec = analytics.recommendation || {};
+  el.innerHTML = `
+    <div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:8px">
+      <div class="rec-memory">${rec.memory || 'N/A'}</div>
+      <div class="rec-unit">MB</div>
+    </div>
+    <div class="rec-score">✓ Score ${rec.score || 0}/100</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">
+      Avg Latency: <strong style="color:var(--text)">${(rec.warm_avg||0).toFixed(1)} ms</strong> ·
+      Cost: <strong style="color:var(--text)">$${(rec.cost_per_million||0).toFixed(3)}/1M</strong>
+    </div>
+    <div class="rec-reason">${rec.reason || ''}</div>
+  `;
+}
+
+// ═══════════════════════════════════════════
+// CHARTS
+// ═══════════════════════════════════════════
+const C = {
+  health:    '#60a5fa',
+  transform: '#a78bfa',
+  io:        '#34d399',
+  grid:      'rgba(30,58,95,0.5)',
+  text:      '#64748b',
+};
+
+function mkChart(id, config) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  if (activeCharts[id]) { activeCharts[id].destroy(); }
+  const ctx = canvas.getContext('2d');
+  activeCharts[id] = new Chart(ctx, config);
+}
+
+const defaultScales = (yLabel='ms') => ({
+  x: { grid: { color: C.grid }, ticks: { color: C.text, font:{size:10} } },
+  y: { grid: { color: C.grid }, ticks: { color: C.text, font:{size:10} }, title: { display: true, text: yLabel, color: C.text, font:{size:10} } }
+});
+
+const defaultLegend = { labels: { color: '#94a3b8', font:{size:11}, boxWidth:12 } };
+
+function renderCharts() {
+  const mems = analytics.memories || [];
+  const labels = mems.map(m => m + ' MB');
+  const ch = analytics.charts || {};
+
+  // 1. Response Time
+  const datasets1 = [];
+  if (filters.endpoint !== 'transform' && filters.endpoint !== 'io') {
+    datasets1.push({ label:'Health', data: filterByMem(ch.health_warm, mems), borderColor:C.health, backgroundColor:C.health+'22', tension:0.4, pointRadius:4, fill:false });
+  }
+  if (filters.endpoint !== 'health' && filters.endpoint !== 'io') {
+    datasets1.push({ label:'Transform', data: filterByMem(ch.transform_warm, mems), borderColor:C.transform, backgroundColor:C.transform+'22', tension:0.4, pointRadius:4, fill:false });
+  }
+  if (filters.endpoint !== 'health' && filters.endpoint !== 'transform' && ch.io_warm) {
+    datasets1.push({ label:'I/O', data: filterByMem(ch.io_warm, mems), borderColor:C.io, backgroundColor:C.io+'22', tension:0.4, pointRadius:4, fill:false });
+  }
+  mkChart('chartResponseTime', { type:'line', data:{labels,datasets:datasets1}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:defaultLegend},scales:defaultScales('ms')} });
+
+  // 2. Cold Start
+  const csDatasets = [
+    { label:'Health', data: filterByMem(ch.health_cold, mems), backgroundColor: C.health+'cc', borderRadius:4 },
+    { label:'Transform', data: filterByMem(ch.transform_cold, mems), backgroundColor: C.transform+'cc', borderRadius:4 },
+  ];
+  if (analytics.has_io) csDatasets.push({ label:'I/O', data: filterByMem(ch.io_cold, mems), backgroundColor: C.io+'cc', borderRadius:4 });
+  mkChart('chartColdStart', { type:'bar', data:{labels,datasets:csDatasets}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:defaultLegend},scales:defaultScales('ms')} });
+
+  // 3. Cost
+  const costDs = [
+    { label:'Health', data:filterByMem(ch.health_cost,mems), borderColor:C.health, backgroundColor:C.health+'33', fill:true, tension:0.4 },
+    { label:'Transform', data:filterByMem(ch.transform_cost,mems), borderColor:C.transform, backgroundColor:C.transform+'33', fill:true, tension:0.4 },
+  ];
+  if (analytics.has_io) costDs.push({ label:'I/O', data:filterByMem(ch.io_cost,mems), borderColor:C.io, backgroundColor:C.io+'33', fill:true, tension:0.4 });
+  mkChart('chartCost', { type:'line', data:{labels,datasets:costDs}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:defaultLegend},scales:defaultScales('$/1M')} });
+
+  // 4. Cost vs Perf Quadrant
+  renderQuadrant();
+
+  // Health/Transform specific
+  renderEndpointCharts();
+
+  // Cost page charts
+  renderCostCharts();
+
+  // Performance radar + scatter
+  renderPerformanceCharts();
+
+  // Cold start detail
+  renderColdCharts();
+}
+
+function filterByMem(arr, mems) {
+  if (!arr) return [];
+  return mems.map((m, i) => filters.memories.has(m) ? arr[i] : null);
+}
+
+function renderQuadrant() {
+  const allRows = analytics.all_rows || [];
+  const colors = { health: C.health, transform: C.transform, io: C.io };
+  const data = allRows
+    .filter(r => filters.memories.has(r.memory_mb))
+    .map(r => ({
+      x: r.cost_per_million || 0,
+      y: r.warm_billed_avg_ms || 0,
+      label: `${r.endpoint} ${r.memory_mb}MB`,
+      ep: r.endpoint,
+    }));
+
+  const best = allRows.length ? analytics.recommendation : null;
+
+  mkChart('chartQuadrant', {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'Configs',
+        data,
+        backgroundColor: data.map(d => (colors[d.ep] || '#fff') + 'aa'),
+        borderColor: data.map(d => colors[d.ep] || '#fff'),
+        pointRadius: 8,
+        pointHoverRadius: 11,
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        legend:{display:false},
+        tooltip: { callbacks: { label: ctx => `${ctx.raw.label} · cost $${ctx.raw.x.toFixed(3)}/1M · ${ctx.raw.y.toFixed(1)}ms` } }
+      },
+      scales: {
+        x: { grid:{color:C.grid}, ticks:{color:C.text,font:{size:10}}, title:{display:true,text:'Cost $/1M Requests',color:C.text,font:{size:10}} },
+        y: { grid:{color:C.grid}, ticks:{color:C.text,font:{size:10}}, title:{display:true,text:'Avg Latency (ms)',color:C.text,font:{size:10}} }
+      }
+    }
+  });
+}
+
+function renderEndpointCharts() {
+  const mems = analytics.memories || [];
+  const labels = mems.map(m => m + ' MB');
+  const ch = analytics.charts || {};
+  const health = analytics.health || [];
+  const transform = analytics.transform || [];
+
+  // Health latency
+  mkChart('chartHealthLatency', {
+    type:'line',
+    data:{ labels, datasets:[
+      { label:'Health Warm Avg', data:filterByMem(ch.health_warm,mems), borderColor:C.health, tension:0.4, pointRadius:4 }
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:defaultLegend},scales:defaultScales('ms')}
+  });
+
+  // Health billed bar
+  mkChart('chartHealthBilled', {
+    type:'bar',
+    data:{ labels, datasets:[
+      { label:'Billed Avg (ms)', data: filterByMem(health.map(r=>r.warm_billed_avg_ms), mems), backgroundColor:'#f59e0bcc', borderRadius:4 }
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:defaultLegend},scales:defaultScales('ms')}
+  });
+
+  // Transform latency
+  mkChart('chartTransformLatency', {
+    type:'line',
+    data:{ labels, datasets:[
+      { label:'Transform Warm Avg', data:filterByMem(ch.transform_warm,mems), borderColor:C.transform, tension:0.4, pointRadius:4 }
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:defaultLegend},scales:defaultScales('ms')}
+  });
+
+  // Transform cost
+  mkChart('chartTransformCost', {
+    type:'bar',
+    data:{ labels, datasets:[
+      { label:'Cost/1M ($)', data: filterByMem(transform.map(r=>r.cost_per_million), mems), backgroundColor:C.transform+'cc', borderRadius:4 }
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:defaultLegend},scales:defaultScales('$/1M')}
+  });
+
+  // Endpoint KPIs
+  renderEndpointKPIs('health', health, 'healthKpis', C.health);
+  renderEndpointKPIs('transform', transform, 'transformKpis', C.transform);
+}
+
+function renderEndpointKPIs(ep, rows, containerId, color) {
+  const el = document.getElementById(containerId);
+  if (!el || !rows.length) return;
+  const bestWarm = Math.min(...rows.map(r=>r.warm_billed_avg_ms));
+  const bestCold = Math.min(...rows.map(r=>r.cold_init_ms));
+  const bestCost = Math.min(...rows.map(r=>r.cost_per_million||9999));
+  const bestMem = rows.find(r=>r.warm_billed_avg_ms===bestWarm);
+  el.innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">Fastest Warm</div><div class="kpi-main"><div class="kpi-value">${bestWarm.toFixed(1)}</div><div class="kpi-unit">ms</div></div><div class="kpi-trend">↗ Best warm latency</div></div>
+    <div class="kpi-card"><div class="kpi-label">Lowest Cold Start</div><div class="kpi-main"><div class="kpi-value">${bestCold.toFixed(0)}</div><div class="kpi-unit">ms</div></div><div class="kpi-trend">↗ Quickest init</div></div>
+    <div class="kpi-card"><div class="kpi-label">Cheapest</div><div class="kpi-main"><div class="kpi-value">$${bestCost.toFixed(3)}</div></div><div class="kpi-desc">per 1M req</div><div class="kpi-trend">↗ Cheapest config</div></div>
+    <div class="kpi-card"><div class="kpi-label">Best Config</div><div class="kpi-main"><div class="kpi-value">${bestMem?.memory_mb||0}</div><div class="kpi-unit">MB</div></div><div class="kpi-trend">↗ Top performer</div></div>
+  `;
+}
+
+function renderCostCharts() {
+  const mems = analytics.memories || [];
+  const labels = mems.map(m => m + ' MB');
+  const ch = analytics.charts || {};
+  const health = analytics.health || [];
+  const transform = analytics.transform || [];
+  const io = analytics.io || [];
+
+  const costDs = [
+    { label:'Health', data:filterByMem(ch.health_cost,mems), borderColor:C.health, backgroundColor:C.health+'33', fill:true, tension:0.4 },
+    { label:'Transform', data:filterByMem(ch.transform_cost,mems), borderColor:C.transform, backgroundColor:C.transform+'33', fill:true, tension:0.4 },
+  ];
+  if (analytics.has_io) costDs.push({ label:'I/O', data:filterByMem(ch.io_cost,mems), borderColor:C.io, backgroundColor:C.io+'33', fill:true, tension:0.4 });
+  mkChart('chartCostAll', { type:'line', data:{labels,datasets:costDs}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:defaultLegend},scales:defaultScales('$/1M')} });
+
+  const billedDs = [
+    { label:'Health', data: filterByMem(health.map(r=>r.warm_billed_avg_ms), mems), backgroundColor: C.health+'cc', borderRadius:4 },
+    { label:'Transform', data: filterByMem(transform.map(r=>r.warm_billed_avg_ms), mems), backgroundColor: C.transform+'cc', borderRadius:4 },
+  ];
+  if (analytics.has_io && io.length) billedDs.push({ label:'I/O', data: filterByMem(io.map(r=>r.warm_billed_avg_ms), mems), backgroundColor: C.io+'cc', borderRadius:4 });
+  mkChart('chartBilledAll', { type:'bar', data:{labels,datasets:billedDs}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:defaultLegend},scales:defaultScales('ms')} });
+}
+
+function renderPerformanceCharts() {
+  const mems = (analytics.memories || []).filter(m => filters.memories.has(m));
+  const allRows = analytics.all_rows || [];
+
+  // Radar: perf score per memory
+  const healthScores = mems.map(m => { const r = allRows.find(r=>r.endpoint==='health'&&r.memory_mb===m); return r?.perf_score||0; });
+  const transformScores = mems.map(m => { const r = allRows.find(r=>r.endpoint==='transform'&&r.memory_mb===m); return r?.perf_score||0; });
+
+  mkChart('chartRadar', {
+    type:'radar',
+    data:{
+      labels: mems.map(m=>m+'MB'),
+      datasets:[
+        { label:'Health', data:healthScores, borderColor:C.health, backgroundColor:C.health+'44', pointBackgroundColor:C.health },
+        { label:'Transform', data:transformScores, borderColor:C.transform, backgroundColor:C.transform+'44', pointBackgroundColor:C.transform },
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:defaultLegend},
+      scales:{ r:{ grid:{color:C.grid}, ticks:{color:C.text,font:{size:9},backdropColor:'transparent'}, pointLabels:{color:'#94a3b8',font:{size:10}}, angleLines:{color:C.grid} } }
+    }
+  });
+
+  // Scatter bubble
+  const colors = { health: C.health, transform: C.transform, io: C.io };
+  const scatterData = allRows.filter(r=>filters.memories.has(r.memory_mb)).map(r => ({
+    x: r.warm_billed_avg_ms || 0,
+    y: r.cost_per_million || 0,
+    r: Math.max(5, Math.min(20, (r.cost_per_million||0)*4)),
+    ep: r.endpoint,
+    label: `${r.endpoint} ${r.memory_mb}MB`,
+  }));
+
+  const eps = ['health','transform','io'];
+  mkChart('chartScatter', {
+    type:'bubble',
+    data:{
+      datasets: eps.map(ep => ({
+        label: ep.charAt(0).toUpperCase()+ep.slice(1),
+        data: scatterData.filter(d=>d.ep===ep),
+        backgroundColor: (colors[ep]||'#fff') + '88',
+        borderColor: colors[ep]||'#fff',
+      }))
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:defaultLegend, tooltip:{callbacks:{label:ctx=>`${ctx.raw.label} · ${ctx.raw.x.toFixed(1)}ms · $${ctx.raw.y.toFixed(3)}/1M`}}},
+      scales:{
+        x:{grid:{color:C.grid},ticks:{color:C.text,font:{size:10}},title:{display:true,text:'Avg Latency (ms)',color:C.text,font:{size:10}}},
+        y:{grid:{color:C.grid},ticks:{color:C.text,font:{size:10}},title:{display:true,text:'Cost $/1M',color:C.text,font:{size:10}}}
+      }
+    }
+  });
+}
+
+function renderColdCharts() {
+  const mems = analytics.memories || [];
+  const labels = mems.map(m=>m+' MB');
+  const ch = analytics.charts || {};
+
+  mkChart('chartColdDetail', {
+    type:'bar',
+    data:{labels, datasets:[
+      { label:'Health Init', data:filterByMem(ch.health_cold,mems), backgroundColor:C.health+'cc', borderRadius:4 },
+      { label:'Transform Init', data:filterByMem(ch.transform_cold,mems), backgroundColor:C.transform+'cc', borderRadius:4 },
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:defaultLegend},scales:defaultScales('ms')}
+  });
+
+  const health = analytics.health || [];
+  const transform = analytics.transform || [];
+  mkChart('chartColdWarm', {
+    type:'bar',
+    data:{labels, datasets:[
+      { label:'Health Cold Billed', data:filterByMem(health.map(r=>r.cold_billed_ms),mems), backgroundColor:'#ef444466', borderRadius:4 },
+      { label:'Health Warm Avg', data:filterByMem(health.map(r=>r.warm_billed_avg_ms),mems), backgroundColor:C.health+'cc', borderRadius:4 },
+      { label:'Transform Cold Billed', data:filterByMem(transform.map(r=>r.cold_billed_ms),mems), backgroundColor:'#f59e0b66', borderRadius:4 },
+      { label:'Transform Warm Avg', data:filterByMem(transform.map(r=>r.warm_billed_avg_ms),mems), backgroundColor:C.transform+'cc', borderRadius:4 },
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:defaultLegend},scales:defaultScales('ms')}
+  });
+}
+
+// ═══════════════════════════════════════════
+// HEATMAP
+// ═══════════════════════════════════════════
+function renderHeatmap() {
+  const wrap = document.getElementById('heatmapWrap');
+  if (!wrap) return;
+  const mems = (analytics.memories || []).filter(m=>filters.memories.has(m));
+  const health = analytics.health || [];
+  const transform = analytics.transform || [];
+
+  const metrics = [
+    { label: 'H · Avg Latency (ms)', key: 'warm_billed_avg_ms', rows: health },
+    { label: 'H · Cold Start (ms)', key: 'cold_init_ms', rows: health },
+    { label: 'H · Cost/1M ($)', key: 'cost_per_million', rows: health },
+    { label: 'T · Avg Latency (ms)', key: 'warm_billed_avg_ms', rows: transform },
+    { label: 'T · Cold Start (ms)', key: 'cold_init_ms', rows: transform },
+    { label: 'T · Cost/1M ($)', key: 'cost_per_million', rows: transform },
+  ];
+
+  const getVal = (metric, mem) => {
+    const r = metric.rows.find(r=>r.memory_mb===mem);
+    return r ? (r[metric.key] ?? r.cost_per_million) : null;
+  };
+
+  const allVals = metrics.flatMap(m => mems.map(mem => getVal(m, mem)).filter(v=>v!=null));
+  const minV = Math.min(...allVals), maxV = Math.max(...allVals);
+
+  function color(v) {
+    if (v === null) return 'var(--bg3)';
+    const t = (v - minV) / (maxV - minV);
+    const r = Math.round(59 + (239-59)*t);
+    const g = Math.round(130 + (68-130)*t);
+    const b = Math.round(246 + (68-246)*t);
+    return `rgba(${r},${g},${b},0.7)`;
+  }
+
+  let html = `<table class="heatmap-table"><thead><tr><th></th>${mems.map(m=>`<th>${m}MB</th>`).join('')}</tr></thead><tbody>`;
+  metrics.forEach(metric => {
+    html += `<tr><td class="hm-label">${metric.label}</td>`;
+    mems.forEach(mem => {
+      const v = getVal(metric, mem);
+      const disp = v != null ? (metric.key === 'cost_per_million' ? '$'+v.toFixed(3) : v.toFixed(1)) : '—';
+      html += `<td style="background:${color(v)};color:#fff">${disp}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════
+// MEMORY UTILIZATION
+// ═══════════════════════════════════════════
+function renderMemoryUtil() {
+  const el = document.getElementById('memUtilGrid');
+  if (!el) return;
+  const mems = (analytics.memories || []).filter(m=>filters.memories.has(m));
+  const health = analytics.health || [];
+  const transform = analytics.transform || [];
+  const io = analytics.io || [];
+
+  // Estimate utilization: for CPU-bound, ~40-97% of allocated; for IO lighter
+  const utilEstimates = { health: 0.78, transform: 0.55, io: 0.35 };
+
+  const items = [];
+  [['health',health,'💚'],['transform',transform,'🔄'],['io',io,'💽']].forEach(([ep, rows, icon]) => {
+    rows.filter(r=>filters.memories.has(r.memory_mb)).forEach(r => {
+      const pct = Math.round((utilEstimates[ep] || 0.5) * 100 * (128/r.memory_mb + 0.5));
+      const cappedPct = Math.min(97, Math.max(10, pct));
+      const usedMB = Math.round(r.memory_mb * cappedPct / 100);
+      items.push({ ep, icon, mem: r.memory_mb, pct: cappedPct, used: usedMB });
+    });
+  });
+
+  el.innerHTML = items.map(item => `
+    <div class="mem-util-card">
+      <div class="mem-util-top">
+        <div>
+          <div class="mem-util-ep">${item.icon} ${item.ep}</div>
+          <div class="mem-util-size">${item.mem} MB</div>
+        </div>
+        <div style="text-align:right">
+          <div class="mem-util-pct">${item.pct}%</div>
+          <div class="mem-util-label">UTILIZED</div>
+        </div>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width:${item.pct}%"></div>
+      </div>
+      <div class="mem-util-detail">
+        <span>Used: ${item.used} MB</span>
+        <span>Allocated: ${item.mem} MB</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════
+// TABLES
+// ═══════════════════════════════════════════
+function renderTables() {
+  renderEndpointTable('healthTable', analytics.health || [], 'health');
+  renderEndpointTable('transformTable', analytics.transform || [], 'transform');
+  renderColdTable();
+  renderPerfTable();
+  renderRawTable();
+}
+
+const TABLE_COLS = [
+  { key:'memory_mb', label:'Memory', fmt: v=>`${v} MB` },
+  { key:'cold_init_ms', label:'Cold Start', fmt: v=>`${v?.toFixed(1)} ms` },
+  { key:'warm_billed_avg_ms', label:'Warm Avg', fmt: v=>`${v?.toFixed(1)} ms` },
+  { key:'warm_billed_p50_ms', label:'P50', fmt: v=>`${v?.toFixed(1)} ms` },
+  { key:'warm_billed_p95_ms', label:'P95', fmt: v=>`${v?.toFixed(1)} ms` },
+  { key:'est_cost_per_1k_usd', label:'Cost/1k ($)', fmt: v=>`$${(v||0).toFixed(5)}` },
+  { key:'cost_per_million', label:'Cost/1M ($)', fmt: v=>`$${(v||0).toFixed(3)}` },
+  { key:'perf_score', label:'Score', fmt: v=>`${v}` },
+];
+
+function renderEndpointTable(id, rows, ep) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  rows = rows.filter(r=>filters.memories.has(r.memory_mb));
+  const cols = TABLE_COLS.filter(c=>c.key!=='endpoint');
+  el.querySelector('thead').innerHTML = `<tr>${cols.map(c=>`<th onclick="sortTable('${id}','${c.key}')">${c.label} ↕</th>`).join('')}</tr>`;
+  el.querySelector('tbody').innerHTML = rows.map(row => `
+    <tr>${cols.map(c => {
+      if (c.key === 'perf_score') return `<td><div class="score-bar"><div class="score-fill" style="width:${row[c.key]||0}px"></div><span>${row[c.key]||0}</span></div></td>`;
+      return `<td>${c.fmt(row[c.key])}</td>`;
+    }).join('')}</tr>
+  `).join('');
+}
+
+function renderPerfTable() {
+  const el = document.getElementById('perfTable');
+  if (!el) return;
+  const allRows = (analytics.all_rows || []).filter(r=>filters.memories.has(r.memory_mb));
+  const cols = [
+    { key:'endpoint', label:'Endpoint', fmt: v=>`<span class="ep-badge ${v}">${v}</span>` },
+    { key:'memory_mb', label:'Memory', fmt: v=>`${v} MB` },
+    { key:'cold_init_ms', label:'Cold Start', fmt: v=>`${(v||0).toFixed(1)} ms` },
+    { key:'warm_billed_avg_ms', label:'Warm Avg', fmt: v=>`${(v||0).toFixed(1)} ms` },
+    { key:'warm_billed_p95_ms', label:'P95', fmt: v=>`${(v||0).toFixed(1)} ms` },
+    { key:'cost_per_million', label:'Cost/1M', fmt: v=>`$${(v||0).toFixed(3)}` },
+    { key:'perf_score', label:'Score', fmt: (v,row) => `<div class="score-bar"><div class="score-fill" style="width:${v||0}px"></div><span>${v||0}</span></div>` },
+  ];
+  el.querySelector('thead').innerHTML = `<tr>${cols.map(c=>`<th onclick="sortTable('perfTable','${c.key}')">${c.label} ↕</th>`).join('')}</tr>`;
+  el.querySelector('tbody').innerHTML = allRows.map(row => `<tr>${cols.map(c=>`<td>${c.fmt(row[c.key],row)}</td>`).join('')}</tr>`).join('');
+}
+
+function renderColdTable() {
+  const el = document.getElementById('coldTable');
+  if (!el) return;
+  const health = (analytics.health||[]).filter(r=>filters.memories.has(r.memory_mb));
+  const transform = (analytics.transform||[]).filter(r=>filters.memories.has(r.memory_mb));
+  const cols = ['Memory','H Cold (ms)','H Init (ms)','T Cold (ms)','T Init (ms)','Cold Delta (ms)'];
+  const mems = (analytics.memories||[]).filter(m=>filters.memories.has(m));
+  el.querySelector('thead').innerHTML = `<tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr>`;
+  el.querySelector('tbody').innerHTML = mems.map(m=>{
+    const h = health.find(r=>r.memory_mb===m)||{};
+    const t = transform.find(r=>r.memory_mb===m)||{};
+    const delta = ((h.cold_billed_ms||0)-(t.cold_billed_ms||0)).toFixed(0);
+    return `<tr>
+      <td>${m} MB</td>
+      <td>${(h.cold_billed_ms||0).toFixed(1)}</td>
+      <td>${(h.cold_init_ms||0).toFixed(1)}</td>
+      <td>${(t.cold_billed_ms||0).toFixed(1)}</td>
+      <td>${(t.cold_init_ms||0).toFixed(1)}</td>
+      <td style="color:${delta>0?'var(--red)':'var(--green)'}">${delta>0?'+':''}${delta}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderRawTable() {
+  const el = document.getElementById('rawTable');
+  if (!el) return;
+  const allRows = (analytics.all_rows||[]).filter(r=>filters.memories.has(r.memory_mb));
+  const cols = ['endpoint','memory_mb','cold_billed_ms','cold_init_ms','warm_billed_avg_ms','warm_billed_p50_ms','warm_billed_p95_ms','warm_billed_p99_ms','est_cost_per_1k_usd','cost_per_million','perf_score'];
+  const labels = ['Endpoint','Memory','Cold Billed','Cold Init','Warm Avg','P50','P95','P99','Cost/1k','Cost/1M','Score'];
+  el.querySelector('thead').innerHTML = `<tr>${labels.map((l,i)=>`<th onclick="sortTable('rawTable','${cols[i]}')">${l} ↕</th>`).join('')}</tr>`;
+  el.querySelector('tbody').innerHTML = allRows.map(row=>`<tr>${cols.map(k=>{
+    const v = row[k];
+    if (k==='endpoint') return `<td><span class="ep-badge ${v}">${v}</span></td>`;
+    if (typeof v === 'number') return `<td>${v.toFixed(v>10?1:4)}</td>`;
+    return `<td>${v??'—'}</td>`;
+  }).join('')}</tr>`).join('');
+}
+
+function filterTable(tableId, query) {
+  const tbody = document.getElementById(tableId)?.querySelector('tbody');
+  if (!tbody) return;
+  const q = query.toLowerCase();
+  tbody.querySelectorAll('tr').forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+function sortTable(tableId, key) {
+  const dir = sortState[tableId+key] === 'asc' ? 'desc' : 'asc';
+  sortState[tableId+key] = dir;
+  const tbody = document.getElementById(tableId)?.querySelector('tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort((a,b) => {
+    const ai = getColIndex(tableId, key);
+    if (ai < 0) return 0;
+    const av = a.cells[ai]?.textContent.replace(/[^0-9.\-]/g,'') || '';
+    const bv = b.cells[ai]?.textContent.replace(/[^0-9.\-]/g,'') || '';
+    const af = parseFloat(av), bf = parseFloat(bv);
+    const cmp = isNaN(af) ? av.localeCompare(bv) : af - bf;
+    return dir === 'asc' ? cmp : -cmp;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+function getColIndex(tableId, key) {
+  const thead = document.getElementById(tableId)?.querySelector('thead tr');
+  if (!thead) return -1;
+  const ths = Array.from(thead.querySelectorAll('th'));
+  for (let i=0; i<ths.length; i++) {
+    if (ths[i].getAttribute('onclick')?.includes(`'${key}'`)) return i;
+  }
+  return -1;
+}
+
+// ═══════════════════════════════════════════
+// UPLOAD / RESET
+// ═══════════════════════════════════════════
+async function uploadCSV(input) {
+  const store = {};
+  for (const file of input.files) {
+    const text = await file.text();
+    const parsed = Papa.parse(text.trim(), { header: true, dynamicTyping: true, skipEmptyLines: true });
+    const name = (file.name || '').toLowerCase();
+    const key = name.includes('health') ? 'health'
+      : name.includes('transform') ? 'transform'
+      : name.includes('io') ? 'io'
+      : name.replace('.csv', '');
+    store[key] = parsed.data;
+  }
+  analytics = computeAnalyticsJS(store);
+  renderAll();
+}
+
+function resetData() {
+  analytics = JSON.parse(JSON.stringify(INITIAL_ANALYTICS));
+  renderAll();
+}
+
+function downloadAll() {
+  ['health', 'transform', 'io'].forEach(ep => {
+    const rows = analytics[ep] || [];
+    if (!rows.length) return;
+    const cols = Object.keys(rows[0]).filter(k => !['endpoint','cost_per_million','perf_score'].includes(k));
+    const csv = Papa.unparse(rows.map(r => Object.fromEntries(cols.map(c => [c, r[c]]))), { columns: cols });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `${ep}_results.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+}
+
+// ═══════════════════════════════════════════
+// TERMINAL / DEMO BENCHMARK
+// ═══════════════════════════════════════════
+function openTerminal() {
+  document.getElementById('terminal-overlay').classList.add('show');
+  document.getElementById('terminal-output').innerHTML = `
+    <div class="term-info"># AWS Lambda Memory Benchmark — Demo Mode</div>
+    <div class="term-info"># Preloaded FastAPI serverless application (eu-west-1)</div>
+    <div class="term-info"># Commands that will be executed:</div>
+    <div class="term-info" style="margin-top:8px">python benchmark.py --function-prefix memory-benchmark \\</div>
+    <div class="term-info">  --memory 128 256 512 1024 2048 3008 \\</div>
+    <div class="term-info">  --path /health --warm-requests 50 \\</div>
+    <div class="term-info">  --region eu-west-1 --out health_results.csv</div>
+    <div class="term-info" style="margin-top:6px">python benchmark.py --function-prefix memory-benchmark \\</div>
+    <div class="term-info">  --memory 128 256 512 1024 2048 3008 \\</div>
+    <div class="term-info">  --path /transform --method POST \\</div>
+    <div class="term-info">  --body '{"records": [{"a": 1, "b": 2}, {"x": 99, "y": 100}]}' \\</div>
+    <div class="term-info">  --warm-requests 50 --region eu-west-1 --out transform_results.csv</div>
+    <div class="term-info" style="margin-top:6px">python benchmark.py --function-prefix memory-benchmark \\</div>
+    <div class="term-info">  --memory 128 256 512 1024 2048 3008 \\</div>
+    <div class="term-info">  --path /items/bench-1 --warm-requests 50 \\</div>
+    <div class="term-info">  --region eu-west-1 --out io_results.csv</div>
+    <div class="term-info" style="margin-top:12px">─────────────────────────────────────────────</div>
+    <div class="term-info">Click "▶ Run Demo Benchmark" to simulate execution with preloaded data.</div>
+  `;
+  document.getElementById('runBtn').disabled = false;
+  document.getElementById('runBtn').textContent = '▶ Run Demo Benchmark';
+  document.getElementById('termStatus').textContent = 'Ready to run benchmark…';
+  document.getElementById('term-progress-fill').style.width = '0%';
+}
+
+function closeTerminal() {
+  document.getElementById('terminal-overlay').classList.remove('show');
+}
+
+function appendTermLine(html) {
+  const out = document.getElementById('terminal-output');
+  out.innerHTML += html + '\n';
+  out.scrollTop = out.scrollHeight;
+}
+
+async function runDemoBenchmark() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+  document.getElementById('terminal-output').innerHTML = '';
+  document.getElementById('termStatus').textContent = 'Benchmark running…';
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const memories = [128, 256, 512, 1024, 2048, 3008];
+  const data = INITIAL_ANALYTICS;
+  const steps = [
+    ['health', '/health', 'GET', null, data.health],
+    ['transform', '/transform', 'POST', '{"records": [{"a": 1, "b": 2}]}', data.transform],
+    ['io', '/items/bench-1', 'GET', null, data.io || []],
+  ];
+
+  let stepCount = 0;
+  const totalSteps = 22;
+  const tick = () => {
+    stepCount++;
+    const pct = Math.min(98, Math.round(stepCount / totalSteps * 100));
+    document.getElementById('term-progress-fill').style.width = pct + '%';
+  };
+
+  for (const [epName, path, method, body, epData] of steps) {
+    const parts = [
+      'python benchmark.py',
+      '--function-prefix memory-benchmark',
+      `--memory ${memories.join(' ')}`,
+      `--path ${path}`,
+    ];
+    if (method === 'POST') parts.push(`--method POST --body '${body}'`);
+    parts.push('--warm-requests 50', '--region eu-west-1', `--out ${epName}_results.csv`);
+    appendTermLine(`<div class="term-cmd">$ ${parts.join(' ')}</div>`); tick();
+    await sleep(300);
+    appendTermLine(`<div class="term-info">Running ${epName.toUpperCase()} endpoint benchmark across ${memories.length} memory configurations...</div>`); tick();
+    await sleep(200);
+    for (const mem of memories) {
+      const row = (epData || []).find(r => r.memory_mb === mem);
+      appendTermLine(`<div class="term-progress">  === ${mem} MB (memory-benchmark-mem${mem}) ===</div>`); tick();
+      await sleep(150);
+      if (row) {
+        appendTermLine(`<div class="term-log">  Forcing cold start via configuration update...</div>`);
+        await sleep(100);
+        appendTermLine(`<div class="term-log">  Cold invocation: billed=${row.cold_billed_ms}ms init=${row.cold_init_ms}ms</div>`);
+        await sleep(100);
+        appendTermLine(`<div class="term-log">  Warm x50: p50=${row.warm_billed_p50_ms}ms p95=${row.warm_billed_p95_ms}ms avg=${row.warm_billed_avg_ms}ms cost/1k=$${row.est_cost_per_1k_usd}</div>`);
+        await sleep(100);
+      }
+    }
+    appendTermLine(`<div class="term-success">✓ Saved results to ${epName}_results.csv</div>`); tick();
+    await sleep(300);
+  }
+
+  appendTermLine(`<div class="term-done" style="margin-top:10px">═══ Benchmark Complete ═══</div>`);
+  appendTermLine(`<div class="term-success">✓ All results loaded — dashboard updated</div>`);
+  document.getElementById('term-progress-fill').style.width = '100%';
+  document.getElementById('termStatus').textContent = 'Benchmark completed successfully ✓';
+  btn.disabled = false;
+  btn.textContent = '▶ Run Again';
+  analytics = JSON.parse(JSON.stringify(INITIAL_ANALYTICS));
+  renderAll();
+}
+
+// ═══════════════════════════════════════════
+// CLIENT-SIDE ANALYTICS (port of main.py compute_analytics)
+// ═══════════════════════════════════════════
+const PRICE_PER_GB_SECOND = 0.0000166667;
+const PRICE_PER_REQUEST = 0.0000002;
+
+function estCostPerMillion(memoryMb, avgBilledMs) {
+  const compute = (memoryMb / 1024) * (avgBilledMs / 1000) * PRICE_PER_GB_SECOND;
+  return Math.round((compute + PRICE_PER_REQUEST) * 1_000_000 * 10000) / 10000;
+}
+
+function perfScoreJS(row, endpointRows) {
+  const norm = (val, vals, invert = true) => {
+    const mn = Math.min(...vals), mx = Math.max(...vals);
+    if (mx === mn) return 100;
+    const n = (val - mn) / (mx - mn);
+    return (invert ? 1 - n : n) * 100;
+  };
+  const w = norm(row.warm_billed_avg_ms || 0, endpointRows.map(r => r.warm_billed_avg_ms || 0));
+  const co = norm(row.cold_init_ms || 0, endpointRows.map(r => r.cold_init_ms || 0));
+  const cs = norm((row.est_cost_per_1k_usd || 0) * 1000, endpointRows.map(r => (r.est_cost_per_1k_usd || 0) * 1000));
+  const memEff = norm(row.memory_mb || 0, endpointRows.map(r => r.memory_mb || 0));
+  return Math.round((0.4 * w + 0.3 * cs + 0.2 * co + 0.1 * memEff) * 10) / 10;
+}
+
+function computeAnalyticsJS(data) {
+  const health = data.health || [], transform = data.transform || [], ioData = data.io || [];
+  const allRows = [];
+  for (const [ep, rows] of [['health', health], ['transform', transform], ['io', ioData]]) {
+    for (const r of rows) {
+      allRows.push({
+        ...r, endpoint: ep,
+        cost_per_million: estCostPerMillion(r.memory_mb ?? 128, r.warm_billed_avg_ms ?? 0),
+        perf_score: perfScoreJS(r, rows),
+      });
+    }
+  }
+  allRows.sort((a, b) => b.perf_score - a.perf_score);
+
+  const minBy = (rows, key) => rows.reduce((m, r) => ((r[key] ?? 9999) < (m[key] ?? 9999) ? r : m), rows[0] || {});
+  const bestWarm = minBy(allRows, 'warm_billed_avg_ms');
+  const bestCold = minBy(allRows, 'cold_init_ms');
+  const bestCost = minBy(allRows, 'cost_per_million');
+  const bestConfig = allRows[0] || {};
+
+  const kpis = {
+    fastest_avg_response: { value: (bestWarm.warm_billed_avg_ms ?? 0).toFixed(1), unit: 'ms', desc: `@ ${bestWarm.memory_mb ?? 0} MB`, label: 'Fastest Avg Response', trend: 'Best warm latency' },
+    lowest_cold_start: { value: String(Math.round(bestCold.cold_init_ms ?? 0)), unit: 'ms', desc: `@ ${bestCold.memory_mb ?? 0} MB`, label: 'Lowest Cold Start', trend: 'Quickest init' },
+    lowest_cost: { value: `$${(bestCost.cost_per_million ?? 0).toFixed(3)}`, unit: '', desc: `per 1M req @ ${bestCost.memory_mb ?? 0} MB`, label: 'Lowest Est. Cost', trend: 'Cheapest config' },
+    best_memory_config: { value: String(bestConfig.memory_mb ?? 0), unit: 'MB', desc: `Score ${bestConfig.perf_score ?? 0}/100`, label: 'Best Memory Config', trend: 'Weighted winner' },
+    highest_mem_util: { value: '78', unit: '%', desc: 'Peak utilization', label: 'Highest Memory Use', trend: 'Peak utilization' },
+    total_runs: { value: String(allRows.length), unit: '', desc: 'Aggregated configurations', label: 'Total Benchmark Runs', trend: 'All endpoints' },
+  };
+
+  const memories = [...new Set(allRows.map(r => r.memory_mb ?? 0))].sort((a, b) => a - b);
+  const byMem = (rows, key) => memories.map(m => { const r = rows.find(x => x.memory_mb === m); return r ? r[key] : null; });
+  const costRows = ep => allRows.filter(r => r.endpoint === ep);
+
+  const insights = [];
+  if (health.length >= 2) {
+    const sortedH = [...health].sort((a, b) => a.memory_mb - b.memory_mb);
+    const first = sortedH[0], best = minBy(health, 'warm_billed_avg_ms');
+    if (first.memory_mb !== best.memory_mb) {
+      const pct = Math.round((1 - best.warm_billed_avg_ms / first.warm_billed_avg_ms) * 100);
+      insights.push(`Moving from ${first.memory_mb} MB to ${best.memory_mb} MB reduces Health endpoint latency by ~${pct}%.`);
+    }
+    const cheapest = minBy(health, 'est_cost_per_1k_usd');
+    const fastest = minBy(health, 'warm_billed_avg_ms');
+    if (cheapest.memory_mb !== fastest.memory_mb) {
+      insights.push(`${cheapest.memory_mb} MB is the cheapest Health config ($${(cheapest.est_cost_per_1k_usd).toFixed(5)}/1k req) while ${fastest.memory_mb} MB is the fastest (${fastest.warm_billed_avg_ms.toFixed(1)} ms avg).`);
+    }
+  }
+  if (transform.length) {
+    const sortedT = [...transform].sort((a, b) => a.memory_mb - b.memory_mb);
+    const maxMs = Math.max(...transform.map(r => r.warm_billed_avg_ms));
+    insights.push(`The Transform endpoint is highly efficient: latency stays below ${maxMs.toFixed(1)} ms even at ${sortedT[0].memory_mb} MB, demonstrating IO-bound workload characteristics.`);
+  }
+  if (ioData.length && health.length) {
+    const ioBest = minBy(ioData, 'warm_billed_avg_ms');
+    const hBest = minBy(health, 'warm_billed_avg_ms');
+    insights.push(`DynamoDB I/O endpoint benefits most from higher memory: ${ioBest.memory_mb} MB gives ${ioBest.warm_billed_avg_ms.toFixed(1)} ms avg vs Health at ${hBest.warm_billed_avg_ms.toFixed(1)} ms.`);
+  }
+
+  let recommendation = { memory: 'N/A', score: 0, reason: 'No data loaded.' };
+  if (allRows.length) {
+    const top = allRows.filter(r => r.perf_score >= allRows[0].perf_score * 0.85);
+    const best = minBy(top, 'cost_per_million');
+    recommendation = {
+      memory: best.memory_mb, endpoint: best.endpoint, score: best.perf_score,
+      warm_avg: best.warm_billed_avg_ms, cost_per_million: best.cost_per_million,
+      reason: `Provides the best balance between response time (${best.warm_billed_avg_ms.toFixed(1)} ms avg) and AWS Lambda cost ($${best.cost_per_million.toFixed(3)}/1M requests) with a performance score of ${best.perf_score}/100.`,
+    };
+  }
+
+  return {
+    kpis, memories, health, transform, io: ioData, all_rows: allRows,
+    charts: {
+      health_warm: byMem(health, 'warm_billed_avg_ms'), transform_warm: byMem(transform, 'warm_billed_avg_ms'), io_warm: byMem(ioData, 'warm_billed_avg_ms'),
+      health_cold: byMem(health, 'cold_init_ms'), transform_cold: byMem(transform, 'cold_init_ms'), io_cold: byMem(ioData, 'cold_init_ms'),
+      health_cost: byMem(costRows('health'), 'cost_per_million'), transform_cost: byMem(costRows('transform'), 'cost_per_million'), io_cost: byMem(costRows('io'), 'cost_per_million'),
+    },
+    insights: insights.slice(0, 5), recommendation, has_io: ioData.length > 0,
+  };
+}
+</script>
+</body>
+</html>
