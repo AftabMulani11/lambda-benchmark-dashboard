@@ -1,5 +1,3 @@
-
-> **[▶ Live demo](https://aftabmulani11.github.io/lambda-benchmark-dashboard/)** — static demo mode with preloaded benchmark data, no AWS account needed.
 <div align="center">
 
 # 🔬 Lambda Benchmark Dashboard
@@ -38,10 +36,6 @@ AWS Lambda pricing is a two-variable trap: more memory costs more per millisecon
 7. **Memory utilization** — per-config progress cards
 8. **Raw data** — searchable/sortable table + CSV download
 
-## Live demo mode ⚡
-
-Hit **"🚀 Demo Benchmark"** and the dashboard replays a full benchmark run **streamed over Server-Sent Events** — you watch the terminal-style execution log live, then every chart re-renders with the incoming data. No AWS account needed to explore.
-
 ## API
 
 | Endpoint | Method | Purpose |
@@ -49,7 +43,6 @@ Hit **"🚀 Demo Benchmark"** and the dashboard replays a full benchmark run **s
 | `/` | GET | Dashboard UI (Jinja2) |
 | `/api/data` | GET | All benchmark results as JSON |
 | `/api/upload` | POST | Upload your own benchmark CSVs |
-| `/api/demo-benchmark/stream` | GET | SSE stream of simulated run |
 | `/api/download/{endpoint}` | GET | Export results as CSV |
 | `/api/reset` | POST | Restore bundled sample data |
 
@@ -65,7 +58,6 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 
 - **FastAPI + Jinja2** — single service, zero-JS-build frontend with Chart.js via CDN
 - **CSV-driven** — benchmark results are plain CSVs in `benchmark_data/`; swap in your own via upload or file drop
-- **SSE over WebSockets** — one-directional live streaming without connection-management overhead
 
 ## Sample finding (bundled data)
 

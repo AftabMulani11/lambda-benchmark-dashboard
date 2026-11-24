@@ -5,17 +5,11 @@ FastAPI + Jinja2 + Vanilla JS with Chart.js
 
 import csv
 import io
-import json
-import os
-import subprocess
-import uuid
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 BASE_DIR = Path(__file__).parent
@@ -24,7 +18,7 @@ DATA_DIR = BASE_DIR / "benchmark_data"
 app = FastAPI(title="Lambda Benchmark Dashboard")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# In-memory store for uploaded/demo data
+# In-memory store for uploaded data
 _data_store: dict[str, list[dict]] = {}
 
 # ─────────────────────────────────────────────
@@ -349,76 +343,6 @@ async def reset():
     global _data_store
     _data_store = {}
     return JSONResponse({"status": "ok"})
-
-
-@app.get("/api/demo-benchmark/stream")
-async def demo_benchmark_stream(app_url: Optional[str] = None):
-    """
-    Stream benchmark execution output as Server-Sent Events.
-    Uses the pre-bundled CSV data to simulate benchmark output when
-    AWS credentials are not available (demo mode).
-    """
-    async def event_generator():
-        data = load_default_data()
-
-        steps = [
-            ("health", "/health", "GET", None, data.get("health", [])),
-            ("transform", "/transform", "POST", '{"records": [{"a": 1, "b": 2}]}', data.get("transform", [])),
-            ("io", "/items/bench-1", "GET", None, data.get("io", [])),
-        ]
-
-        memories = [128, 256, 512, 1024, 2048, 3008]
-
-        for ep_name, path, method, body, ep_data in steps:
-            cmd_parts = [
-                "python benchmark.py",
-                "--function-prefix memory-benchmark",
-                f"--memory {' '.join(map(str, memories))}",
-                f"--path {path}",
-                "--warm-requests 50",
-                "--region eu-west-1",
-                f"--out {ep_name}_results.csv",
-            ]
-            if method == "POST":
-                cmd_parts.insert(4, f'--method POST --body \'{body}\'')
-            cmd = " ".join(cmd_parts)
-
-            yield f"data: {json.dumps({'type': 'cmd', 'text': f'$ {cmd}'})}\n\n"
-            import asyncio
-            await asyncio.sleep(0.3)
-
-            yield f"data: {json.dumps({'type': 'info', 'text': f'Running {ep_name.upper()} endpoint benchmark across {len(memories)} memory configurations...'})}\n\n"
-            await asyncio.sleep(0.2)
-
-            for mem in memories:
-                row = next((r for r in ep_data if r.get("memory_mb") == mem), None)
-                yield f"data: {json.dumps({'type': 'progress', 'text': f'  === {mem} MB (memory-benchmark-mem{mem}) ==='})}\n\n"
-                await asyncio.sleep(0.15)
-
-                if row:
-                    yield f"data: {json.dumps({'type': 'log', 'text': f'  Forcing cold start via configuration update...'})}\n\n"
-                    await asyncio.sleep(0.1)
-                    cold_text = f"  Cold invocation: billed={row['cold_billed_ms']}ms init={row['cold_init_ms']}ms"
-                    yield f"data: {json.dumps({'type': 'log', 'text': cold_text})}\n\n"
-                    await asyncio.sleep(0.1)
-                    warm_text = f"  Warm x50: p50={row['warm_billed_p50_ms']}ms p95={row['warm_billed_p95_ms']}ms avg={row['warm_billed_avg_ms']}ms cost/1k=${row['est_cost_per_1k_usd']}"
-                    yield f"data: {json.dumps({'type': 'log', 'text': warm_text})}\n\n"
-                    await asyncio.sleep(0.1)
-
-            yield f"data: {json.dumps({'type': 'success', 'text': f'Saved results to {ep_name}_results.csv'})}\n\n"
-            await asyncio.sleep(0.3)
-
-        analytics = compute_analytics(load_default_data())
-        yield f"data: {json.dumps({'type': 'done', 'analytics': analytics})}\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @app.get("/api/download/{endpoint}")
